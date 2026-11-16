@@ -1,0 +1,46 @@
+\begin{table}[htbp]
+\centering
+\caption{Carbon cycle and permafrost parameters. Sources: L00, \citet{lentonLandOceanCarbon2000}; KM84, \citet{knoxChangesAtmosphericCO21984}; W21, \citet{woodardPermafrostImplementationSimple2021}; AMcK22, \citet{armstrongmckayExceeding15degCGlobal2022}.}
+\label{tab:lenton_params}
+\small
+\begin{tabular}{llll}
+\hline
+Symbol & Description & Value & Source \\
+\hline
+\multicolumn{4}{l}{\textit{Land}} \\
+$k_p$ & photosynthesis rate constant & 0.184 yr$^{-1}$ & L00 \\
+$k_{MM}$ & photosynthesis normalising constant & 1.478 & L00 \\
+$K_M$ & CO$_2$ half-saturation & 120 ppmv & L00 \\
+$k_c$ & CO$_2$ compensation point & 29 ppmv & L00 \\
+$k_r$, $k_A$ & plant respiration rate, normalisation & 0.092 yr$^{-1}$, $8.7039\times10^{9}$ & L00 \\
+$E_a$ & plant respiration activation energy & 54.83 kJ mol$^{-1}$ & L00 \\
+$k_t$ & turnover rate & 0.092 yr$^{-1}$ & L00 \\
+$k_{sr}$, $k_B$ & soil respiration rate, normalisation & 0.0337 yr$^{-1}$, 157.072 & L00 \\
+$k_D$ & permanent fraction of land-use loss & 0.27 & L00 \\
+$C_{v,0}$, $C_{s,0}$ & pre-industrial vegetation, soil carbon & 550, 1500 GtC & L00 \\
+\multicolumn{4}{l}{\textit{Ocean physics}} \\
+$k_T$ & thermohaline overturning & $6.5\times10^{7}$ m$^3$ s$^{-1}$ & L00 \\
+$k_U$ & high-latitude overturning & $4.87\times10^{7}$ m$^3$ s$^{-1}$ & L00 \\
+$k_{wi}$ & warm--intermediate exchange & $1.25\times10^{7}$ m$^3$ s$^{-1}$ & L00 \\
+$k_{id}$ & intermediate--deep exchange & $2.0\times10^{8}$ m$^3$ s$^{-1}$ & L00 \\
+$k_s$ & piston velocity & 1752 m yr$^{-1}$ & L00 \\
+$A_h$, $A_l$ & cold, warm fraction of ocean area ($3.6\times10^{14}$ m$^2$) & 0.15, 0.85 & L00 \\
+$V_l, V_h, V_i, V_d$ & box volumes & 3.06, 0.54, 36, 97 $\times10^{16}$ m$^3$ & L00 \\
+$T_l$, $T_h$; $S$ & surface temperatures; salinity & 295.15, 275.15 K; 34.7 & L00, KM84 \\
+\multicolumn{4}{l}{\textit{Ocean chemistry and biology}} \\
+ & ocean-mean DIC, NO$_3$ & 2250, 33 $\mu$mol kg$^{-1}$ & KM84 \\
+ & ocean-mean TA & 2326 $\mu$mol kg$^{-1}$ & tuned to 280 ppmv \\
+$\alpha_N$ & nitrate use in cold surface water & 0.01 & KM84 \\
+ & C:N; CaCO$_3$:C$_{org}$ & 7; 0.25 & KM84 \\
+ & C$_{org}$ remineralised in intermediate water & 0.3 & KM84 \\
+\multicolumn{4}{l}{\textit{Permafrost}} \\
+$C_{\text{perm}}(2020)$ & frozen permafrost carbon & 730 PgC & W21 \\
+$\mu$, $\sigma$ & frozen-fraction parameters & 1.67, 0.986 & W21 \\
+$w_f$ & high-latitude warming factor & 2.0 & W21 \\
+$f_{\text{static}}$ & non-labile fraction of thawed carbon & 0.74 & W21 \\
+$r$ & thawed-carbon respiration rate & 0.02 yr$^{-1}$ ($\times m$) & W21 \\
+$Q_{10}$; $f_{CH_4}$ & respiration temperature sensitivity; CH$_4$ fraction & 2; 0.023 & W21 \\
+ & abrupt thaw: extra fraction, threshold, timescale & 0.5, 1.5\textdegree C, 200 yr & AMcK22 \\
+\hline
+\end{tabular}
+\end{table}

@@ -1,0 +1,33 @@
+\begin{table}[H]
+\centering
+\caption{Evaluation of the Lenton carbon cycle implementation against \citet{lentonLandOceanCarbon2000} (pre-industrial steady state, Fig.~1; extended business-as-usual experiment, Sect.~5.1, forced with his emissions and coupled to his energy balance) and against CMIP6 carbon-cycle feedback metrics for a 1\%\,yr$^{-1}$ CO\textsubscript{2} increase to 4$\times$CO\textsubscript{2} \citep{aroraCarbonConcentrationCarbon2020}.}
+\label{tab:model_evaluation}
+\small
+\begin{tabular}{lcc}
+\toprule
+Quantity & Reference & This study \\
+\midrule
+\multicolumn{3}{@{}l}{\textit{Pre-industrial steady state (Lenton 2000, Fig.~1)}} \\
+Atmospheric CO\textsubscript{2} (ppmv) & 280 & 280.0 \\
+Ocean carbon, warm/cold/intermediate/deep (PgC) & 730 / 140 / 10{,}040 / 26{,}830 & 716 / 139 / 9{,}997 / 26{,}888 \\
+Air--sea flux, warm surface in/out (PgC\,yr$^{-1}$) & 57.0 / 57.9 & 56.9 / 58.4 \\
+Air--sea flux, cold surface in/out (PgC\,yr$^{-1}$) & 19.1 / 18.2 & 19.0 / 17.5 \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Extended business as usual (Lenton 2000, Sect.~5.1)}} \\
+CO\textsubscript{2} in 1990 (ppmv) & 353 & 352.7 \\
+Land / ocean sink in 1990 (PgC\,yr$^{-1}$) & 1.98 / 1.98 & 1.98 / 1.99 \\
+Peak land sink (PgC\,yr$^{-1}$, year) & ${\sim}2.5$ (2030) & 2.43 (2028) \\
+Land becomes a carbon source (year) & ${\sim}2120$ & 2113 \\
+Carbon lost while land is a source (PgC) & 69 & 68 \\
+Ocean sink in 2060; peak (PgC\,yr$^{-1}$, year) & 4.9; ${\sim}6.8$ (2130) & 4.89; 6.75 (2132) \\
+Peak CO\textsubscript{2} (ppmv, year) & 985 (2170) & 984 (2174) \\
+Peak warming (K, year) & 5.5 (2180) & 5.53 (2184) \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Carbon-cycle feedbacks, 1\%\,yr$^{-1}$ to 4$\times$CO\textsubscript{2} (CMIP6 mean $\pm$ s.d.)}} \\
+Land $\beta$ (PgC\,ppm$^{-1}$) & $1.22 \pm 0.40$ & 0.69 \\
+Ocean $\beta$ (PgC\,ppm$^{-1}$) & $0.79 \pm 0.07$ & 0.86 \\
+Land $\gamma$ (PgC\,K$^{-1}$) & $-58 \pm 38$ & $-32$ \\
+Ocean $\gamma$ (PgC\,K$^{-1}$) & $-17 \pm 5$ & 0 (fixed ocean surface temperature) \\
+\bottomrule
+\end{tabular}
+\end{table}

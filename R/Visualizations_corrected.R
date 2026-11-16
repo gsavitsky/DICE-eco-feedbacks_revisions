@@ -1,0 +1,945 @@
+# Corrected-model figures (generated from Visualizations.R, 2026-11-17).
+# Reads vis_corrected/ (written by Optimizing_DICE-CP/permafrost_revision_test/ch2_final_runs_parallel.py).
+# Changes vs Visualizations.R: data from vis_corrected; time series reported to 2300 (U_acc for welfare totals to 2420);
+# secondary ppm axis on the atmospheric-carbon panel (2.13 PgC per ppm); feedback-factorial boxplots omitted for now.
+dir.create("vis_corrected/figures", showWarnings = FALSE, recursive = TRUE)
+# Import all cleaned sensitivity analysis data for visualization
+# Data output from STELLA and cleaned in file STELLA output processing.R
+
+library(readr)
+library(purrr)
+library(dplyr)
+
+
+vis_dir <- "vis_corrected"
+fs_dir  <- file.path(vis_dir, "feedback sensitivity")
+ws_dir  <- file.path(vis_dir, "welfare sensitivity")
+
+# Read every CSV in a variable folder into a named list (name = variable)
+read_variable_csvs <- function(dir_path) {
+  files <- list.files(dir_path, pattern = "\\.csv$", full.names = TRUE)
+  var_names <- tools::file_path_sans_ext(basename(files))
+  set_names(map(files, read_csv, show_col_types = FALSE), var_names)
+}
+
+# ---- Feedback sensitivity analysis ----
+
+# ---- Welfare/discounting sensitivity analysis ----
+ws_params <- read_csv(file.path(ws_dir, "run_configurations.csv"), show_col_types = FALSE)
+ws_vars   <- read_variable_csvs(file.path(ws_dir, "by_variable"))
+ws_gams   <- read_csv(file.path(ws_dir, "GAMS_reference.csv"), show_col_types = FALSE)
+
+# ---- Reporting horizon: models run to 2420; time series shown to REPORT_END ----
+REPORT_END <- 2300
+ws_vars_full <- ws_vars
+ws_vars <- lapply(ws_vars, function(d) d[d$Years <= REPORT_END, ])
+ws_gams <- ws_gams[ws_gams$Years <= REPORT_END, ]
+
+# ---- Quick check ----
+cat("Welfare sensitivity:  ", nrow(ws_params), "runs,", length(ws_vars), "variables\n")
+cat("Welfare variables:   ", paste(names(ws_vars), collapse = ", "), "\n")
+
+
+##########################################################
+
+##VISUALIZATIONS
+
+# Figure: Projected atmospheric temperature anomaly and atmospheric carbon
+# concentration under three model configurations, 2020-2420
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+
+base_theme <- theme_bw(base_size = 17) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 20, face = "bold"),
+    axis.text = element_text(color = "black", size = 19, face = "bold"),
+    legend.text = element_text(color = "black", size = 19),
+    legend.title = element_text(color = "black", size = 20),
+    plot.tag = element_text(color = "black", size = 21, face = "bold"),
+    plot.margin = margin(t = 55, r = 12, b = 10, l = 10)
+  )
+
+# ---- Identify the three configuration runs within ws_params ----
+# (default welfare/discounting settings: Economy.altdam = 0, Economy.altdisc = 0)
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+# ---- Pull temperature and carbon series for those three runs ----
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+temp_data   <- find_var(ws_vars, "temperature_anomaly")
+carbon_data <- find_var(ws_vars, "atmospheric_carbon")
+
+extract_config <- function(run, label) {
+  tibble(
+    Year        = temp_data$Years,
+    Config      = label,
+    Temperature = temp_data[[paste0("Run_", run)]],
+    Carbon      = carbon_data[[paste0("Run_", run)]]
+  )
+}
+
+configs_df <- bind_rows(
+  extract_config(run_dice2023, "DICE 2023"),
+  extract_config(run_dicec,    "DICE-C"),
+  extract_config(run_dicecp,   "DICE-CP")
+) %>%
+  mutate(Config = factor(Config, levels = c("DICE 2023", "DICE-C", "DICE-CP")))
+
+
+series_colors <- c(
+  "DICE 2023" = "#1f77b4", "DICE-C" = "#ff7f0e",
+  "DICE-CP" = "#d62728", "GAMS benchmark" = "black"
+)
+series_linetypes <- c(
+  "DICE 2023" = "solid", "DICE-C" = "dashed",
+  "DICE-CP" = "dotdash", "GAMS benchmark" = "blank"
+)
+series_shapes <- c(
+  "DICE 2023" = NA, "DICE-C" = NA,
+  "DICE-CP" = NA, "GAMS benchmark" = 21
+)
+
+# ---- Panels (a)/(b): time series with GAMS benchmark + peak-year vlines ----
+
+make_timeseries_panel <- function(value_col, gams_col, y_lab, tag) {
+  main <- configs_df %>% transmute(Year, Config, Value = .data[[value_col]])
+  gams <- ws_gams %>% transmute(Year = Years, Config = "GAMS benchmark", Value = .data[[gams_col]])
+  combined <- bind_rows(main, gams) %>%
+    mutate(Config = factor(Config, levels = names(series_colors)))
+  
+  peak_years <- main %>%
+    group_by(Config) %>%
+    slice_max(Value, n = 1, with_ties = FALSE) %>%
+    ungroup()
+  
+  ggplot(combined, aes(Year, Value, color = Config, linetype = Config, shape = Config)) +
+    geom_vline(data = peak_years, aes(xintercept = Year, color = Config),
+               linewidth = 0.4, linetype = "dashed", alpha = 0.6, show.legend = FALSE) +
+    geom_line(data = filter(combined, Config != "GAMS benchmark"), linewidth = 1) +
+    geom_point(data = filter(combined, Config == "GAMS benchmark"), size = 1.2) +
+    scale_color_manual(values = series_colors, name = NULL,
+                       guide = guide_legend(override.aes = list(linewidth = 1))) +
+    scale_linetype_manual(values = series_linetypes, name = NULL) +
+    scale_shape_manual(values = series_shapes, name = NULL) +
+    labs(x = "Year", y = y_lab, tag = tag) +
+    base_theme +
+    theme(legend.position = c(0.78, 0.75), legend.background = element_blank())
+}
+
+p_a <- make_timeseries_panel("Temperature", "temperature_anomaly",
+                             "Temperature anomaly\n(\u00b0C above pre-industrial)", "(a)")
+p_b <- make_timeseries_panel("Carbon", "atmospheric_co2",
+                             "Atmospheric carbon (GtC)", "(b)") +
+  scale_y_continuous(sec.axis = sec_axis(~ . / 2.13, name = "CO\u2082 (ppm)"))
+
+# ---- Panels (c)/(d): phase plots with directional arrows ----
+
+phase_df <- configs_df %>%
+  mutate(ConfigKey = recode(Config, "DICE 2023" = "D23", "DICE-C" = "DC", "DICE-CP" = "DCP")) %>%
+  select(Year, ConfigKey, Temperature, Carbon) %>%
+  pivot_wider(names_from = ConfigKey, values_from = c(Temperature, Carbon)) %>%
+  arrange(Year)
+
+# arrowhead segments along the path's arc length
+
+make_arrows <- function(px, py, n_arrows = 6) {
+  d <- sqrt(diff(px)^2 + diff(py)^2)
+  cum_d <- c(0, cumsum(d))
+  total <- cum_d[length(cum_d)]
+  targets <- seq(0, total, length.out = n_arrows + 2)[2:(n_arrows + 1)]
+  idx <- vapply(targets, function(t) which.min(abs(cum_d - t)), integer(1))
+  idx <- unique(pmin(pmax(idx, 1), length(px) - 1))
+  tibble(x = px[idx], y = py[idx], xend = px[idx + 1], yend = py[idx + 1])
+}
+
+make_phase_panel <- function(x_col, y_dc_col, y_dcp_col, axis_lab_x, axis_lab_y, tag) {
+  rng <- range(c(phase_df[[x_col]], phase_df[[y_dc_col]], phase_df[[y_dcp_col]]), na.rm = TRUE)
+  
+  arrows_dc  <- make_arrows(phase_df[[x_col]], phase_df[[y_dc_col]])
+  arrows_dcp <- make_arrows(phase_df[[x_col]], phase_df[[y_dcp_col]])
+  
+  ggplot(phase_df, aes(x = .data[[x_col]])) +
+    geom_abline(slope = 1, intercept = 0, color = "grey60") +
+    geom_path(aes(y = .data[[y_dc_col]], color = "DICE-C"), linewidth = 1, linetype = "dashed") +
+    geom_path(aes(y = .data[[y_dcp_col]], color = "DICE-CP"), linewidth = 1, linetype = "dotdash") +
+    geom_segment(data = arrows_dc, aes(x = x, y = y, xend = xend, yend = yend),
+                 color = series_colors[["DICE-C"]], linewidth = 1,
+                 arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+    geom_segment(data = arrows_dcp, aes(x = x, y = y, xend = xend, yend = yend),
+                 color = series_colors[["DICE-CP"]], linewidth = 1,
+                 arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+    scale_color_manual(values = series_colors, name = NULL,
+                       breaks = c("DICE-C", "DICE-CP")) +
+    coord_cartesian(xlim = rng, ylim = rng) +
+    labs(x = axis_lab_x, y = axis_lab_y, tag = tag) +
+    base_theme +
+    theme(legend.position = c(0.8, 0.15), legend.background = element_blank())
+}
+
+p_c <- make_phase_panel(
+  "Temperature_D23", "Temperature_DC", "Temperature_DCP",
+  "DICE 2023 temperature anomaly\n(\u00b0C above pre-industrial)",
+  "Feedback model\ntemperature anomaly\n(\u00b0C above pre-industrial)",
+  "(c)"
+)
+p_d <- make_phase_panel(
+  "Carbon_D23", "Carbon_DC", "Carbon_DCP",
+  "DICE 2023 atmospheric carbon (GtC)",
+  "Feedback model\natmospheric carbon (GtC)",
+  "(d)"
+)
+
+# ---- Combine and save ----
+
+fig <- (p_a | p_b) / plot_spacer() / (p_c | p_d) + plot_layout(heights = c(1, 0.06, 1))
+
+ggsave("vis_corrected/figures/fig_temp_co2.png", fig, width = 15, height = 12, dpi = 300)
+
+# Figure: DICE configurations vs. CMIP6 SSP ensemble means, 2020-2100
+
+
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+
+# ---- Load CMIP6 SSP temperature data ----
+
+cmip <- read_csv("CMIP_temp_by_scenario.csv", show_col_types = FALSE) %>%
+  rename(
+    `SSP1-2.6` = `temp ssp126`,
+    `SSP2-4.5` = `temp ssp245`,
+    `SSP3-7.0` = `temp ssp370`,
+    `SSP5-8.5` = `temp ssp585`
+  ) %>%
+  filter(Year >= 2020, Year <= 2100)
+
+# Rebase each SSP series to 2020 (subtract each column's 2020 value)
+cmip <- cmip %>%
+  mutate(across(-Year, ~ . - .[Year == 2020])+1.24)
+
+ssp_long <- cmip %>%
+  pivot_longer(-Year, names_to = "Series", values_to = "Value")
+
+ssp_ribbon <- cmip %>%
+  transmute(
+    Year,
+    ymin = pmin(`SSP1-2.6`, `SSP2-4.5`, `SSP3-7.0`, `SSP5-8.5`),
+    ymax = pmax(`SSP1-2.6`, `SSP2-4.5`, `SSP3-7.0`, `SSP5-8.5`)
+  )
+
+# ---- Identify DICE 2023 / DICE-C / DICE-CP runs ----
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+temp_data <- find_var(ws_vars, "temperature_anomaly")
+
+dice_long <- bind_rows(
+  tibble(Year = temp_data$Years, Series = "DICE 2023", Value = temp_data[[paste0("Run_", run_dice2023)]]),
+  tibble(Year = temp_data$Years, Series = "DICE-C",    Value = temp_data[[paste0("Run_", run_dicec)]]),
+  tibble(Year = temp_data$Years, Series = "DICE-CP",   Value = temp_data[[paste0("Run_", run_dicecp)]])
+) %>%
+  filter(Year >= 2020, Year <= 2100)
+
+# ---- Combine and plot ----
+
+series_levels <- c("DICE 2023", "DICE-C", "DICE-CP",
+                   "SSP1-2.6", "SSP2-4.5", "SSP3-7.0", "SSP5-8.5")
+
+series_colors <- c(
+  "DICE 2023" = "#000000", "DICE-C" = "#e67e22", "DICE-CP" = "#27ae60",
+  "SSP1-2.6"  = "#8ecae6", "SSP2-4.5" = "#8e44ad",
+  "SSP3-7.0"  = "#f4978e", "SSP5-8.5" = "#5c2a1a"
+)
+
+series_linewidth <- c(
+  "DICE 2023" = 2.2, "DICE-C" = 2.2, "DICE-CP" = 2.2,
+  "SSP1-2.6"  = 0.7, "SSP2-4.5" = 0.7, "SSP3-7.0" = 0.7, "SSP5-8.5" = 0.7
+)
+
+all_long <- bind_rows(dice_long, ssp_long) %>%
+  mutate(Series = factor(Series, levels = series_levels))
+
+p <- ggplot() +
+  geom_ribbon(data = ssp_ribbon, aes(x = Year, ymin = ymin, ymax = ymax),
+              fill = "grey85", alpha = 0.6) +
+  geom_line(data = all_long, aes(Year, Value, color = Series, linewidth = Series)) +
+  scale_color_manual(values = series_colors, name = NULL,
+                     guide = guide_legend(override.aes = list(linewidth = 8))) +
+  scale_linewidth_manual(values = series_linewidth, guide = "none") +
+  labs(
+    x = "Year", y = "Temperature anomaly\n(\u00b0C above 1850-1900)"
+  ) +
+  theme_bw(base_size = 15) +
+  theme(
+    text = element_text(color = "black"),
+    plot.title = element_text(color = "black", size = 18, face = "bold"),
+    axis.title = element_text(color = "black", size = 17, face = "bold"),
+    axis.text = element_text(color = "black", size = 16, face = "bold"),
+    legend.text = element_text(color = "black", size = 16),
+    legend.title = element_text(color = "black", size = 17),
+    legend.key.width = unit(1.0, "cm"),
+    legend.key.height = unit(1.0, "cm")
+  )
+
+ggsave("vis_corrected/figures/fig_cmip6_comparison.png", p, width = 12, height = 8, dpi = 300)
+
+
+# Figure: Climate damage fraction under three model configurations, 2020-2420
+#   (a) time series with GAMS benchmark + peak-year vlines
+#   (b) phase plot (DICE 2023 vs. DICE-C/DICE-CP) with 1:1 reference + arrows
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+
+base_theme <- theme_bw(base_size = 15) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 17, face = "bold"),
+    axis.text = element_text(color = "black", size = 16, face = "bold"),
+    legend.text = element_text(color = "black", size = 16),
+    legend.title = element_text(color = "black", size = 17),
+    plot.tag = element_text(color = "black", size = 18, face = "bold"),
+    plot.margin = margin(t = 34, r = 12, b = 10, l = 10)
+  )
+
+
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+dfrac_data <- find_var(ws_vars, "damages_as_fraction")
+
+extract_config <- function(run, label) {
+  tibble(
+    Year   = dfrac_data$Years,
+    Config = label,
+    Dfrac  = dfrac_data[[paste0("Run_", run)]]
+  )
+}
+
+configs_df <- bind_rows(
+  extract_config(run_dice2023, "DICE 2023"),
+  extract_config(run_dicec,    "DICE-C"),
+  extract_config(run_dicecp,   "DICE-CP")
+) %>%
+  mutate(Config = factor(Config, levels = c("DICE 2023", "DICE-C", "DICE-CP")))
+
+# ---- Styling shared across panels ----
+
+series_colors <- c(
+  "DICE 2023" = "#1f77b4", "DICE-C" = "#ff7f0e",
+  "DICE-CP" = "#d62728", "GAMS benchmark" = "black"
+)
+series_linetypes <- c(
+  "DICE 2023" = "solid", "DICE-C" = "dashed",
+  "DICE-CP" = "dotdash", "GAMS benchmark" = "blank"
+)
+series_shapes <- c(
+  "DICE 2023" = NA, "DICE-C" = NA,
+  "DICE-CP" = NA, "GAMS benchmark" = 21
+)
+
+# ---- Panel (a): GAMS benchmark + peak-year + time series ----
+
+main <- configs_df %>% transmute(Year, Config, Value = Dfrac)
+gams <- ws_gams %>% transmute(Year = Years, Config = "GAMS benchmark",
+                              Value = damages_as_fraction_of_gross_output)
+combined <- bind_rows(main, gams) %>%
+  mutate(Config = factor(Config, levels = names(series_colors)))
+
+peak_years <- main %>%
+  group_by(Config) %>%
+  slice_max(Value, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+p_a <- ggplot(combined, aes(Year, Value, color = Config, linetype = Config, shape = Config)) +
+  geom_vline(data = peak_years, aes(xintercept = Year, color = Config),
+             linewidth = 0.4, linetype = "dashed", alpha = 0.6, show.legend = FALSE) +
+  geom_line(data = filter(combined, Config != "GAMS benchmark"), linewidth = 1) +
+  geom_point(data = filter(combined, Config == "GAMS benchmark"), size = 1.2) +
+  scale_color_manual(values = series_colors, name = NULL) +
+  scale_linetype_manual(values = series_linetypes, name = NULL) +
+  scale_shape_manual(values = series_shapes, name = NULL) +
+  labs(x = "Year", y = "Climate damage fraction\n(fraction of gross output)", tag = "(a)") +
+  base_theme +
+  theme(legend.position = c(0.78, 0.75), legend.background = element_blank())
+
+# ---- Panel (b): phase plot ----
+
+phase_df <- configs_df %>%
+  mutate(ConfigKey = recode(Config, "DICE 2023" = "D23", "DICE-C" = "DC", "DICE-CP" = "DCP")) %>%
+  select(Year, ConfigKey, Dfrac) %>%
+  pivot_wider(names_from = ConfigKey, values_from = Dfrac) %>%
+  arrange(Year)
+
+
+make_arrows <- function(px, py, n_arrows = 6) {
+  d <- sqrt(diff(px)^2 + diff(py)^2)
+  cum_d <- c(0, cumsum(d))
+  total <- cum_d[length(cum_d)]
+  targets <- seq(0, total, length.out = n_arrows + 2)[2:(n_arrows + 1)]
+  idx <- vapply(targets, function(t) which.min(abs(cum_d - t)), integer(1))
+  idx <- unique(pmin(pmax(idx, 1), length(px) - 1))
+  tibble(x = px[idx], y = py[idx], xend = px[idx + 1], yend = py[idx + 1])
+}
+
+rng <- range(c(phase_df$D23, phase_df$DC, phase_df$DCP), na.rm = TRUE)
+
+arrows_dc  <- make_arrows(phase_df$D23, phase_df$DC)
+arrows_dcp <- make_arrows(phase_df$D23, phase_df$DCP)
+
+p_b <- ggplot(phase_df, aes(x = D23)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey60") +
+  geom_path(aes(y = DC, color = "DICE-C"), linewidth = 1, linetype = "dashed") +
+  geom_path(aes(y = DCP, color = "DICE-CP"), linewidth = 1, linetype = "dotdash") +
+  geom_segment(data = arrows_dc, aes(x = x, y = y, xend = xend, yend = yend),
+               color = series_colors[["DICE-C"]], linewidth = 1,
+               arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+  geom_segment(data = arrows_dcp, aes(x = x, y = y, xend = xend, yend = yend),
+               color = series_colors[["DICE-CP"]], linewidth = 1,
+               arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+  scale_color_manual(values = series_colors, name = NULL,
+                     breaks = c("DICE-C", "DICE-CP")) +
+  coord_cartesian(xlim = rng, ylim = rng) +
+  labs(
+    x = "DICE 2023 climate damage fraction",
+    y = "Feedback model climate damage fraction",
+    tag = "(b)"
+  ) +
+  base_theme +
+  theme(legend.position = c(0.8, 0.15), legend.background = element_blank())
+
+
+
+fig <- p_a | p_b
+
+ggsave("vis_corrected/figures/fig_damage_fraction.png", fig, width = 15, height = 7, dpi = 300)
+
+# Figure: Difference in economic output relative to the DICE 2023 baseline,
+# 2020-2420
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+
+base_theme <- theme_bw(base_size = 15) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 17, face = "bold"),
+    axis.text = element_text(color = "black", size = 16, face = "bold"),
+    legend.text = element_text(color = "black", size = 16),
+    legend.title = element_text(color = "black", size = 17),
+    plot.margin = margin(t = 15, r = 12, b = 10, l = 10)
+  )
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+output_data <- find_var(ws_vars, "^Economy_Output_Y")
+
+baseline <- output_data[[paste0("Run_", run_dice2023)]]
+
+delta_df <- bind_rows(
+  tibble(Year = output_data$Years, Config = "DICE-C",
+         Delta = output_data[[paste0("Run_", run_dicec)]] - baseline),
+  tibble(Year = output_data$Years, Config = "DICE-CP",
+         Delta = output_data[[paste0("Run_", run_dicecp)]] - baseline)
+) %>%
+  mutate(Config = factor(Config, levels = c("DICE-C", "DICE-CP")))
+
+
+series_colors    <- c("DICE-C" = "#ff7f0e", "DICE-CP" = "#d62728")
+series_linetypes <- c("DICE-C" = "dashed",  "DICE-CP" = "dotted")
+
+p <- ggplot(delta_df, aes(Year, Delta, color = Config, linetype = Config)) +
+  geom_hline(yintercept = 0, color = "grey50", linewidth = 0.5) +
+  geom_line(linewidth = 1.2) +
+  scale_color_manual(values = series_colors, name = NULL) +
+  scale_linetype_manual(values = series_linetypes, name = NULL) +
+  labs(
+    x = "Year",
+    y = "Difference in economic output\nrelative to DICE 2023 baseline"
+  ) +
+  base_theme +
+  theme(legend.position = c(0.15, 0.15), legend.background = element_blank())
+
+ggsave("vis_corrected/figures/fig_output_delta.png", p, width = 10, height = 7, dpi = 300)
+
+# Figure: Climate damage fraction under three model configurations, 2020-2420
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+
+
+base_theme <- theme_bw(base_size = 17) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 20, face = "bold"),
+    axis.text = element_text(color = "black", size = 19, face = "bold"),
+    legend.text = element_text(color = "black", size = 19),
+    legend.title = element_text(color = "black", size = 20),
+    plot.tag = element_text(color = "black", size = 21, face = "bold"),
+    plot.margin = margin(t = 30, r = 12, b = 10, l = 10)
+  )
+
+
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+dfrac_data <- find_var(ws_vars, "damages_as_fraction")
+
+extract_config <- function(run, label) {
+  tibble(
+    Year   = dfrac_data$Years,
+    Config = label,
+    Dfrac  = dfrac_data[[paste0("Run_", run)]]
+  )
+}
+
+configs_df <- bind_rows(
+  extract_config(run_dice2023, "DICE 2023"),
+  extract_config(run_dicec,    "DICE-C"),
+  extract_config(run_dicecp,   "DICE-CP")
+) %>%
+  mutate(Config = factor(Config, levels = c("DICE 2023", "DICE-C", "DICE-CP")))
+
+
+series_colors <- c(
+  "DICE 2023" = "#1f77b4", "DICE-C" = "#ff7f0e",
+  "DICE-CP" = "#d62728", "GAMS benchmark" = "black"
+)
+series_linetypes <- c(
+  "DICE 2023" = "solid", "DICE-C" = "dashed",
+  "DICE-CP" = "dotted", "GAMS benchmark" = "blank"
+)
+series_shapes <- c(
+  "DICE 2023" = NA, "DICE-C" = NA,
+  "DICE-CP" = NA, "GAMS benchmark" = 21
+)
+
+
+main <- configs_df %>% transmute(Year, Config, Value = Dfrac)
+gams <- ws_gams %>% transmute(Year = Years, Config = "GAMS benchmark",
+                              Value = damages_as_fraction_of_gross_output)
+combined <- bind_rows(main, gams) %>%
+  mutate(Config = factor(Config, levels = names(series_colors)))
+
+peak_years <- main %>%
+  group_by(Config) %>%
+  slice_max(Value, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+p_a <- ggplot(combined, aes(Year, Value, color = Config, linetype = Config, shape = Config)) +
+  geom_vline(data = peak_years, aes(xintercept = Year, color = Config),
+             linewidth = 0.4, linetype = "dashed", alpha = 0.6, show.legend = FALSE) +
+  geom_line(data = filter(combined, Config != "GAMS benchmark"), linewidth = 1) +
+  geom_point(data = filter(combined, Config == "GAMS benchmark"), size = 1.2) +
+  scale_color_manual(values = series_colors, name = NULL) +
+  scale_linetype_manual(values = series_linetypes, name = NULL) +
+  scale_shape_manual(values = series_shapes, name = NULL) +
+  labs(x = "Year", y = "Climate damage fraction\n(fraction of gross output)", tag = "(a)") +
+  base_theme +
+  theme(legend.position = c(0.78, 0.75), legend.background = element_blank())
+
+
+phase_df <- configs_df %>%
+  mutate(ConfigKey = recode(Config, "DICE 2023" = "D23", "DICE-C" = "DC", "DICE-CP" = "DCP")) %>%
+  select(Year, ConfigKey, Dfrac) %>%
+  pivot_wider(names_from = ConfigKey, values_from = Dfrac) %>%
+  arrange(Year)
+
+make_arrows <- function(px, py, n_arrows = 6) {
+  d <- sqrt(diff(px)^2 + diff(py)^2)
+  cum_d <- c(0, cumsum(d))
+  total <- cum_d[length(cum_d)]
+  targets <- seq(0, total, length.out = n_arrows + 2)[2:(n_arrows + 1)]
+  idx <- vapply(targets, function(t) which.min(abs(cum_d - t)), integer(1))
+  idx <- unique(pmin(pmax(idx, 1), length(px) - 1))
+  tibble(x = px[idx], y = py[idx], xend = px[idx + 1], yend = py[idx + 1])
+}
+
+rng <- range(c(phase_df$D23, phase_df$DC, phase_df$DCP), na.rm = TRUE)
+
+arrows_dc  <- make_arrows(phase_df$D23, phase_df$DC)
+arrows_dcp <- make_arrows(phase_df$D23, phase_df$DCP)
+
+p_b <- ggplot(phase_df, aes(x = D23)) +
+  geom_abline(slope = 1, intercept = 0, color = "grey60") +
+  geom_path(aes(y = DC, color = "DICE-C"), linewidth = 1, linetype = "dashed") +
+  geom_path(aes(y = DCP, color = "DICE-CP"), linewidth = 1, linetype = "dotted") +
+  geom_segment(data = arrows_dc, aes(x = x, y = y, xend = xend, yend = yend),
+               color = series_colors[["DICE-C"]], linewidth = 1,
+               arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+  geom_segment(data = arrows_dcp, aes(x = x, y = y, xend = xend, yend = yend),
+               color = series_colors[["DICE-CP"]], linewidth = 1,
+               arrow = arrow(length = unit(0.28, "cm"), type = "closed")) +
+  scale_color_manual(values = series_colors, name = NULL,
+                     breaks = c("DICE-C", "DICE-CP")) +
+  coord_cartesian(xlim = rng, ylim = rng) +
+  labs(
+    x = "DICE 2023 climate damage fraction",
+    y = "Feedback model climate damage fraction",
+    tag = "(b)"
+  ) +
+  base_theme +
+  theme(legend.position = c(0.8, 0.15), legend.background = element_blank())
+
+
+fig <- p_a | p_b
+
+ggsave("vis_corrected/figures/fig_damage_fraction.png", fig, width = 15, height = 7, dpi = 300)
+
+
+# Figure: Welfare loss vs. DICE 2023 standard-damage baseline, across damage
+# function and discounting assumptions (slope graph showing sensitivity of
+# welfare loss to the damage function choice, faceted by discount regime)
+
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+
+base_theme <- theme_bw(base_size = 15) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 17, face = "bold"),
+    axis.text = element_text(color = "black", size = 14, face = "bold"),
+    strip.text = element_text(color = "black", size = 16, face = "bold"),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    legend.text = element_text(color = "black", size = 16),
+    legend.title = element_text(color = "black", size = 17),
+    plot.margin = margin(t = 15, r = 12, b = 10, l = 10)
+  )
+
+# ---- Compute welfare loss (%) for each config x damage x discount combo ----
+
+util <- ws_vars_full[[grep("Accumulated_Utility", names(ws_vars), value = TRUE, ignore.case = TRUE)]]
+final_util <- util %>% filter(Years == max(Years))
+
+run_util <- tibble(
+  Run = as.integer(sub("Run_", "", names(final_util)[-1])),
+  Utility = as.numeric(final_util[1, -1])
+)
+
+df <- ws_params %>%
+  left_join(run_util, by = "Run") %>%
+  filter(!(`Climate.Lenton?` == 0 & `Permafrost dynamics.permafrost switch` == 1)) %>%
+  mutate(
+    Config = case_when(
+      `Climate.Lenton?` == 0 ~ "DICE 2023",
+      `Climate.Lenton?` == 1 & `Permafrost dynamics.permafrost switch` == 0 ~ "DICE-C",
+      `Climate.Lenton?` == 1 & `Permafrost dynamics.permafrost switch` == 1 ~ "DICE-CP"
+    ),
+    Config = factor(Config, levels = c("DICE 2023", "DICE-C", "DICE-CP")),
+    Damage = factor(ifelse(Economy.altdam == 0, "Standard\ndamage", "Howard-Sterner\ndamage"),
+                    levels = c("Standard\ndamage", "Howard-Sterner\ndamage")),
+    Discount = ifelse(Economy.altdisc == 0, "Standard discount", "Zero time preference")
+  ) %>%
+  group_by(Discount) %>%
+  mutate(Baseline = Utility[Config == "DICE 2023" & Damage == "Standard\ndamage"]) %>%
+  ungroup() %>%
+  mutate(WelfareLoss = (Utility - Baseline) / Baseline * 100)
+
+
+series_colors <- c("DICE 2023" = "#1f77b4", "DICE-C" = "#ff7f0e", "DICE-CP" = "#d62728")
+
+p <- ggplot(df, aes(x = Damage, y = WelfareLoss, group = Config, color = Config)) +
+  geom_line(linewidth = 1.3) +
+  geom_point(size = 4.5) +
+  facet_wrap(~Discount) +
+  scale_color_manual(values = series_colors, name = NULL) +
+  labs(x = NULL, y = "Welfare loss vs. DICE 2023\nstandard-damage baseline (%)") +
+  base_theme
+
+ggsave("vis_corrected/figures/fig_welfare_slopegraph.png", p, width = 12, height = 6.5, dpi = 300)
+
+# Figure: Welfare loss vs. DICE 2023 standard-damage baseline, across damage
+# function and discounting assumptions (grouped bar chart, faceted by discount
+# regime, shared y-axis for direct visual comparison across panels)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# ---- Shared theme: larger, darker text throughout ----
+
+base_theme <- theme_bw(base_size = 15) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 17, face = "bold"),
+    axis.text = element_text(color = "black", size = 14, face = "bold"),
+    strip.text = element_text(color = "black", size = 16, face = "bold"),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    legend.text = element_text(color = "black", size = 16),
+    legend.title = element_text(color = "black", size = 17),
+    plot.margin = margin(t = 15, r = 12, b = 10, l = 10)
+  )
+
+
+util <- ws_vars_full[[grep("Accumulated_Utility", names(ws_vars), value = TRUE, ignore.case = TRUE)]]
+final_util <- util %>% filter(Years == max(Years))
+
+run_util <- tibble(
+  Run = as.integer(sub("Run_", "", names(final_util)[-1])),
+  Utility = as.numeric(final_util[1, -1])
+)
+
+df <- ws_params %>%
+  left_join(run_util, by = "Run") %>%
+  filter(!(`Climate.Lenton?` == 0 & `Permafrost dynamics.permafrost switch` == 1)) %>%
+  mutate(
+    Config = case_when(
+      `Climate.Lenton?` == 0 ~ "DICE 2023",
+      `Climate.Lenton?` == 1 & `Permafrost dynamics.permafrost switch` == 0 ~ "DICE-C",
+      `Climate.Lenton?` == 1 & `Permafrost dynamics.permafrost switch` == 1 ~ "DICE-CP"
+    ),
+    Config = factor(Config, levels = c("DICE 2023", "DICE-C", "DICE-CP")),
+    Damage = ifelse(Economy.altdam == 0, "Standard damage", "Howard-Sterner damage"),
+    Damage = factor(Damage, levels = c("Standard damage", "Howard-Sterner damage")),
+    Discount = ifelse(Economy.altdisc == 0, "Standard discount", "Zero time preference")
+  ) %>%
+  group_by(Discount) %>%
+  mutate(Baseline = Utility[Config == "DICE 2023" & Damage == "Standard damage"]) %>%
+  ungroup() %>%
+  mutate(WelfareLoss = (Utility - Baseline) / Baseline * 100)
+
+
+damage_colors <- c("Standard damage" = "#e8a33d", "Howard-Sterner damage" = "#2a9d8f")
+
+p <- ggplot(df, aes(x = Config, y = WelfareLoss, fill = Damage)) +
+  geom_col(position = position_dodge(width = 0.75), width = 0.65, color = "black") +
+  geom_text(aes(label = sprintf("%.2f%%", WelfareLoss),
+                vjust = ifelse(WelfareLoss < 0, 1.4, -0.6)),
+            position = position_dodge(width = 0.75), size = 4.5, fontface = "bold") +
+  facet_wrap(~Discount) +
+  scale_fill_manual(values = damage_colors, name = NULL) +
+  labs(x = NULL, y = "Welfare loss vs. DICE 2023\nstandard-damage baseline (%)") +
+  base_theme
+
+ggsave("vis_corrected/figures/fig_welfare_barchart.png", p, width = 12, height = 6.5, dpi = 300)
+
+# Figure: Economic output, abatement cost, and discounted social welfare per
+# year under three model configurations, 2020-2420
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+
+
+base_theme <- theme_bw(base_size = 17) +
+  theme(
+    text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = 20, face = "bold"),
+    axis.text = element_text(color = "black", size = 19, face = "bold"),
+    legend.text = element_text(color = "black", size = 19),
+    legend.title = element_text(color = "black", size = 20),
+    plot.tag = element_text(color = "black", size = 21, face = "bold"),
+    plot.tag.position = "topleft",
+    plot.margin = margin(t = 30, r = 12, b = 10, l = 10)
+  )
+
+
+find_run <- function(params, switch_values) {
+  out <- params
+  for (col in names(switch_values)) out <- out[out[[col]] == switch_values[[col]], ]
+  if (nrow(out) != 1) stop("Expected exactly one matching run, found ", nrow(out))
+  out$Run
+}
+
+default_welfare <- c("Economy.altdam" = 0, "Economy.altdisc" = 0)
+
+run_dice2023 <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 0,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicec    <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 0))
+run_dicecp   <- find_run(ws_params, c(default_welfare, "Climate.Lenton?" = 1,
+                                      "Permafrost dynamics.permafrost switch" = 1))
+
+find_var <- function(vars_list, pattern) {
+  m <- grep(pattern, names(vars_list), value = TRUE, ignore.case = TRUE)
+  if (length(m) != 1) stop("Expected exactly one variable matching '", pattern, "', found ", length(m))
+  vars_list[[m]]
+}
+
+output_data <- find_var(ws_vars, "Ygross")
+cabate_data <- find_var(ws_vars, "cost_of_emissions_abatement")
+uacc_data   <- find_var(ws_vars, "Accumulated_Utility")
+
+# ---- Styling shared across panels ----
+
+series_colors <- c("DICE 2023" = "#1f77b4", "DICE-C" = "#ff7f0e", "DICE-CP" = "#d62728")
+series_linetypes <- c("DICE 2023" = "solid", "DICE-C" = "dashed", "DICE-CP" = "dotted")
+
+configs <- tibble(
+  run = c(run_dice2023, run_dicec, run_dicecp),
+  Config = factor(c("DICE 2023", "DICE-C", "DICE-CP"), levels = c("DICE 2023", "DICE-C", "DICE-CP"))
+)
+
+extract_levels <- function(var_data) {
+  purrr::pmap_dfr(configs, function(run, Config) {
+    tibble(Year = var_data$Years, Config = Config, Value = var_data[[paste0("Run_", run)]])
+  })
+}
+
+extract_flow <- function(var_data) {
+  purrr::pmap_dfr(configs, function(run, Config) {
+    y <- var_data$Years
+    v <- var_data[[paste0("Run_", run)]]
+    tibble(Year = y[-1], Config = Config, Value = diff(v) / diff(y))
+  })
+}
+
+
+make_panel <- function(combined, y_lab, tag, legend_pos) {
+  ggplot(combined, aes(Year, Value, color = Config, linetype = Config)) +
+    geom_line(linewidth = 1) +
+    scale_color_manual(values = series_colors, name = NULL) +
+    scale_linetype_manual(values = series_linetypes, name = NULL) +
+    labs(x = "Year", y = y_lab, tag = tag) +
+    base_theme +
+    theme(legend.position = legend_pos, legend.background = element_blank())
+}
+
+
+output_main <- extract_levels(output_data) %>%
+  mutate(Config = factor(Config, levels = names(series_colors)))
+
+p_a <- make_panel(output_main, "Gross economic output\n(trillions 2019 USD)", "(a)", c(0.2, 0.8))
+
+
+cabate_main <- extract_levels(cabate_data) %>%
+  mutate(Config = factor(Config, levels = names(series_colors)))
+
+p_b <- make_panel(cabate_main, "Cost of emissions abatement\n(trillions 2019 USD)", "(b)", c(0.2, 0.8))
+
+
+
+welfare_main <- extract_flow(uacc_data) %>%
+  mutate(Config = factor(Config, levels = names(series_colors)))
+
+p_c <- make_panel(welfare_main, "Discounted social welfare\nper year (dimensionless)", "(c)", c(0.8, 0.8))
+
+
+
+fig <- p_a | p_b | p_c
+
+ggsave("vis_corrected/figures/fig_output_welfare_levels.png", fig, width = 20, height = 7, dpi = 300)
