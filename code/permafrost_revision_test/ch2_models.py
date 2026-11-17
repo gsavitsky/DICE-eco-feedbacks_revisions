@@ -121,6 +121,8 @@ def perma_flows(T, dT, Cp, Th, A, G, T200, pm):
 def rhs(S, y, T200, cfg, pulse_gtc=0.0):
     Tb1, Tb2, K, Ctot, Uacc, FGHG = S[:NE]
     L, aL, sig, eland, Fmisc, FGHGexo, CO2EGHGabateB, pback, remiss, elandL, miu, s = prs.exo(y)
+    if cfg.get('ctrl') is not None:            # optional annual control path (e.g. a re-optimised solution), step per year
+        _m, _s = cfg['ctrl']; _i = min(max(int(y) - 2020, 0), len(_m) - 1); miu, s = float(_m[_i]), float(_s[_i])
     T = Tb1 + Tb2
     Yg = aL * (L / 1000.0) ** (1 - prs.gamma_) * K ** prs.gamma_
     Dfrac = cfg['a2'] * T ** prs.a3_

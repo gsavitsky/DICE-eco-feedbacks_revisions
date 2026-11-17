@@ -7,7 +7,7 @@
 | `code/` | Python model and data. `permafrost_revision_test/ch2_models.py` is the model; `ch2_final_runs_parallel.py` runs every Chapter 2 experiment; `ch2_tables.py` writes the LaTeX tables. `dice_pyomo_corrected.py` is the Chapter 3 re-optimisation with the same physics. |
 | `R/` | `Visualizations_corrected.R` (the original figure script pointed at the corrected outputs) and `Visualizations_permafrost_hooks.R` (SCC-bounds, welfare-range and emissions figures). `R/vis_corrected/` holds the current outputs (CSV) and `figures/`. |
 | `tables/` | LaTeX tables generated from the outputs, the revised Methods section (`methods_revised.tex`), the parameter table (`tab_lenton_params.tex`) and new bibliography entries (`new_references.bib`). |
-| `chapter3_pyomo/` | VM instructions for the Chapter 3 re-optimisation (`VM_CORRECTED_RUNS.md`). |
+| `chapter3/` | Chapter 3 re-optimisation results (corrected physics): optimal controls and trajectories (`results/`), outcomes table (`ch3_corrected_outcomes.md`/`.csv`), figure data (`figdata_corrected/`), figures (`figures_ch3_corrected/`, with `caption_notes.md`), the scripts that make them (`ch3_outcomes_corrected.py`, `ch3_figures_corrected.R`), and the VM instructions (`VM_CORRECTED_RUNS.md`). The optimisation model itself is `code/dice_pyomo_corrected.py`. |
 
 ### Model configurations
 All configurations share the DICE 2023 economy, two-box temperature model, forcing, damages and welfare. They are driven by the DICE 2023 cost–benefit optimal controls (GAMS). Simulations run 2020–2300.
@@ -122,6 +122,43 @@ d = M.run(dict(carbon='lenton', perma=dict(m=1.0, abrupt='smooth'),
 
 **Upper end of the sweep:** above m = 8 (~89 PgC/°C), the spin-up has already respired most of the thawed carbon before 2020. That would imply more than 100 PgC of pre-2020 permafrost emissions, which history does not support, so the sweep is cut at m = 8. Within this module the maximum is set by how much carbon thaws (pool size × frozen-fraction parameters), not by the respiration rate (`ch2_permafrost_ceiling.csv`).
 
+## 4b. Chapter 3: re-optimised policy (corrected physics, 17 Nov 2026)
+
+`code/dice_pyomo_corrected.py` uses the same physics as the Chapter 2 model.
+- **Ocean:** 4 DIC states. Alkalinity and nitrate stay exactly steady, so biology enters as constant source and sink terms. The carbonate chemistry is fitted to within 4e-6.
+- **Permafrost:** Hector-faithful, with the 2020 pools from the spin-up.
+- **Controls:** annual μ and s, with the GAMS bounds (including TATM ≥ 0.5 °C).
+- **Time step:** one RK4 step per year is numerically unstable for the corrected surface ocean, so solves use 2 and 5 substeps per year.
+
+**Convergence:** every solve ended "optimal". For each model, two starts (GAMS controls and the previous optimum) and two resolutions (2 and 5 substeps) give the same objective:
+- DICE-C: 6449.4698 (padded objective);
+- DICE-CP: 6437.3011.
+
+**Consistency:** the Chapter 2 forward model driven by the optimal controls reproduces the optimised temperatures to within 0.001 °C. Reporting window is 2020–2300; the optimisation solves to 2470 to avoid end-of-horizon effects.
+
+| Each model at its own optimum | DICE 2023 | DICE-C | DICE-CP |
+|---|---|---|---|
+| Peak T (year) | 2.76 (2117) | 2.73 (2116) | 2.83 (2115) |
+| μ in 2050 / 2100 | 0.359 / 0.795 | 0.356 / 0.763 | 0.375 / 0.811 |
+| Year μ first reaches 1 | 2119 | 2125 | 2119 |
+| Cumulative industrial CO2, 2020–2100 | 760 GtC | 777 GtC | 738 GtC |
+| 2020 SCC (2019$/tCO2) | 48.3 | 48.3 | 53.0 (+9.8%) |
+| Welfare vs DICE 2023 | — | +0.05% | −0.05% |
+| Welfare gain from re-optimising vs GAMS controls | +0.010% | +0.014% | +0.005% |
+
+What the results show:
+- **The policy response to permafrost is modest.** DICE-CP abates a little more mid-century, offsetting about 20% of the ~105 PgC of permafrost release by 2100. It stays ~0.07 °C warmer than DICE 2023 at peak.
+- **Re-optimising raises peak warming relative to the GAMS controls in every model** (+0.10 to +0.18 °C). This is the annual- vs five-year-grid effect already seen for DICE 2023, so configurations should be compared at their own optima.
+- **Permafrost refreezes as the climate cools.** After ~2130 carbon returns to the frozen pool, and the thawed pool is empty by ~2255.
+- **DICE-C reaches the inherited 0.5 °C lower bound on temperature near 2290.**
+
+To rebuild the outputs:
+```bash
+cd chapter3
+python3 ch3_outcomes_corrected.py
+Rscript ch3_figures_corrected.R
+```
+
 ---
 
 ## 5. To do
@@ -134,7 +171,7 @@ d = M.run(dict(carbon='lenton', perma=dict(m=1.0, abrupt='smooth'),
 5. **Feedback factorial (old Fig. 4 and Table):** rerun with the corrected model, or drop it.
    - The new switch definitions freeze each dependence at its 2020 value, which keeps every run mass-consistent.
    - Some switch combinations currently drive CO2 to zero and crash. This needs debugging before the 64 runs can be produced.
-6. **Chapter 3:** re-solve DICE-C and DICE-CP on the VM with `dice_pyomo_corrected.py` (2 substeps per year; see `chapter3_pyomo/VM_CORRECTED_RUNS.md`). Then rebuild the outcomes table, the SCC and the figures. All current Chapter 3 numbers use the faulty Lenton ocean and the old permafrost module.
+6. **Chapter 3:** re-solved on 17 Nov (see section 4b and `chapter3/`). Next, rewrite the chapter text with the new numbers. All Chapter 3 numbers in the current draft use the faulty Lenton ocean and the old permafrost module.
 7. **Consistency check:** every number in the text, tables and captions traced to the CSVs in `R/vis_corrected/`.
 8. **Code and data:** commit this code. Mark the STELLA `.stmx` as superseded in the public repository.
 

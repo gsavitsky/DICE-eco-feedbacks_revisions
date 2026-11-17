@@ -185,6 +185,8 @@ def _phi(z):
 
 def dff_dT(T):
     c = math.sqrt(2.0 / math.pi)
+    T = 0.5 * (T + pyo.sqrt(T ** 2 + 1e-4))      # smooth positive floor (~0.005 C): keeps log() defined if a
+                                                 # warm-start path cools to ~0 C; no effect for T > ~0.05 C
     z = (pyo.log(WF * T) - MU_PF) / SIG_PF
     u = c * (z + 0.044715 * z ** 3)
     return -0.5 * (1 - pyo.tanh(u) ** 2) * c * (1 + 3 * 0.044715 * z ** 2) / (SIG_PF * T)
