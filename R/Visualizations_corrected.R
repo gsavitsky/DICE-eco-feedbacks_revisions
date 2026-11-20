@@ -1,6 +1,6 @@
 # Corrected-model figures (generated from Visualizations.R, 2026-11-17).
 # Reads vis_corrected/ (written by Optimizing_DICE-CP/permafrost_revision_test/ch2_final_runs_parallel.py).
-# Changes vs Visualizations.R: data from vis_corrected; time series reported to 2300 (U_acc for welfare totals to 2420);
+# Changes vs Visualizations.R: data from vis_corrected; time series reported to 2200 (simulations end in 2200);
 # secondary ppm axis on the atmospheric-carbon panel (2.13 PgC per ppm); feedback-factorial boxplots omitted for now.
 dir.create("vis_corrected/figures", showWarnings = FALSE, recursive = TRUE)
 # Import all cleaned sensitivity analysis data for visualization
@@ -30,7 +30,7 @@ ws_vars   <- read_variable_csvs(file.path(ws_dir, "by_variable"))
 ws_gams   <- read_csv(file.path(ws_dir, "GAMS_reference.csv"), show_col_types = FALSE)
 
 # ---- Reporting horizon: models run to 2420; time series shown to REPORT_END ----
-REPORT_END <- 2300
+REPORT_END <- 2200
 ws_vars_full <- ws_vars
 ws_vars <- lapply(ws_vars, function(d) d[d$Years <= REPORT_END, ])
 ws_gams <- ws_gams[ws_gams$Years <= REPORT_END, ]

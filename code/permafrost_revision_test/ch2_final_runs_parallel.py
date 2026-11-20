@@ -1,6 +1,6 @@
 """
 Chapter 2 final runs, parallel (2026-11-17). Supersedes ch2_final_runs.py + ch2_sectionB_runs.py.
-Simulations bounded to 2300 (CH2_NYEARS=280; welfare and SCC measured at 2300).
+Simulations bounded to 2200 (CH2_NYEARS=180; welfare and SCC measured at 2200). Columns *_end refer to the last year.
 Changes vs the 2026-11-16 runs: permafrost pools in 2020 come from a 1800-2020 spin-up from Hector's 865 PgC
 (ch2_models.perma_2020_state); the feedback factorial freezes each dependence at its 2020 value (mass-consistent).
 
@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-RPROJ = os.environ.get("CH2_RPROJ", os.path.abspath(os.path.join(HERE, "..", "..", "R")))   # outputs go to R/vis_corrected
+RPROJ = os.path.expanduser("~/Desktop/DICE_eco_feedbacks/DICE2023 Rproj")
 OUT = os.path.join(RPROJ, "vis_corrected")
 PERMA = dict(m=1.0, abrupt='smooth')
 DAMAGE = {0: 0.003467, 1: 0.01}
@@ -29,7 +29,7 @@ KEEP = ('TATM', 'Uacc', 'release', 'thaw', 'cons', 'Y', 'Ygross', 'Cabate', 'Dfr
 def work(job):
     import ch2_models as M
     tag, cfg, pulse = job
-    d = M.run(cfg, pulse=pulse, nyears=int(os.environ.get('CH2_NYEARS', '280')))   # simulations bounded to 2300
+    d = M.run(cfg, pulse=pulse, nyears=int(os.environ.get('CH2_NYEARS', '180')))   # simulations bounded to 2200
     return tag, {k: d[k] for k in KEEP}
 
 
@@ -75,7 +75,7 @@ if __name__ == "__main__":
     with Pool(os.cpu_count()) as pool:
         R = dict(pool.map(work, jobs, chunksize=1))
     print(f"runs done in {time.time() - t0:.0f}s", flush=True)
-    NY = int(os.environ.get('CH2_NYEARS', '280')); yrs = np.arange(2020, 2021 + NY)
+    NY = int(os.environ.get('CH2_NYEARS', '180')); yrs = np.arange(2020, 2021 + NY)
 
     # ---- grid ----
     rows = []
@@ -85,13 +85,13 @@ if __name__ == "__main__":
                 r = b + 2 * hs + zt; d = R[('grid', r, None)]; T = d['TATM']
                 rows.append(dict(Run=r, config=lab, damage='Howard-Sterner' if hs else 'standard',
                                  discounting='zero time preference' if zt else 'standard', lenton=lent, permafrost=perm,
-                                 peak_T=T.max(), peak_year=int(yrs[T.argmax()]), T2100=T[80], T2200=T[180], T2300=T[280],
-                                 CO2ppm_2100=d['CO2ppm'][80], release_2100=d['release'][80], release_2300=d['release'][280],
-                                 thawed_2020=d['thawed'][0], Cperm_2020=d['Cperm'][0], Uacc_2300=d['Uacc'][-1],
+                                 peak_T=T.max(), peak_year=int(yrs[T.argmax()]), T2100=T[80], T2150=T[130], T2200=T[180],
+                                 CO2ppm_2100=d['CO2ppm'][80], release_2100=d['release'][80], release_end=d['release'][-1],
+                                 thawed_2020=d['thawed'][0], Cperm_2020=d['Cperm'][0], Uacc_end=d['Uacc'][-1],
                                  SCC2020=scc_from(d, R[('grid', r, 2020)], 2020), SCC2050=scc_from(d, R[('grid', r, 2050)], 2050)))
     Sm = pd.DataFrame(rows).sort_values('Run')
     Sm.to_csv(os.path.join(OUT, "ch2_runs_summary.csv"), index=False)
-    print(Sm[['Run', 'config', 'damage', 'discounting', 'peak_T', 'peak_year', 'release_2100', 'Uacc_2300', 'SCC2020']].round(3).to_string(index=False))
+    print(Sm[['Run', 'config', 'damage', 'discounting', 'peak_T', 'peak_year', 'release_2100', 'Uacc_end', 'SCC2020']].round(3).to_string(index=False))
     WS = os.path.join(OUT, "Welfare sensitivity")
     os.makedirs(os.path.join(WS, "by_variable"), exist_ok=True)
     VARS = {'Climate_Atmospheric_temperature_anomaly_TATM_': 'TATM', 'Climate_atmospheric_carbon': 'MAT',
@@ -123,9 +123,9 @@ if __name__ == "__main__":
                     sw.append(dict(carbon='DFAIR' if carbon == 'dfair' else 'Lenton', damage='Howard-Sterner' if hs else 'standard',
                                    discounting='zero time preference' if zt else 'standard', m=m,
                                    PgC_per_C_2100=bb['release'][80] / T[80], release_2100=bb['release'][80], thaw_2100=bb['thaw'][80],
-                                   release_2300=bb['release'][280], thawed_2020=bb['thawed'][0],
-                                   dT_peak=T[:281].max() - b0['TATM'][:281].max(), dT_2100=T[80] - b0['TATM'][80],
-                                   dT_2200=T[180] - b0['TATM'][180], welfare_pct=100 * (bb['Uacc'][-1] / b0['Uacc'][-1] - 1),
+                                   release_end=bb['release'][-1], thawed_2020=bb['thawed'][0],
+                                   dT_peak=T.max() - b0['TATM'].max(), dT_2100=T[80] - b0['TATM'][80],
+                                   dT_2150=T[130] - b0['TATM'][130], dT_2200=T[180] - b0['TATM'][180], welfare_pct=100 * (bb['Uacc'][-1] / b0['Uacc'][-1] - 1),
                                    SCC=s, SCC_noperma=s0, SCC_pct=100 * (s / s0 - 1)))
     W = pd.DataFrame(sw); W.to_csv(os.path.join(OUT, "ch2_permafrost_sweep.csv"), index=False)
     print(W[(W.damage == 'standard')].pivot_table(index=['carbon', 'm'], columns='discounting',

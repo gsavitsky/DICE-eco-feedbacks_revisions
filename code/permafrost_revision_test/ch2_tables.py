@@ -1,16 +1,16 @@
 """
 Chapter 2 LaTeX tables from the final corrected-model outputs (2026-11-17).
-Reporting convention (user decision 2026-11-17): simulations bounded to 2020-2300; welfare and SCC use U_acc to 2300; the
-DICE objective horizon); time-series quantities are reported to 2300 (peak values found within 2020-2300).
+Reporting convention (user decision 2026-11-20): simulations bounded to 2020-2200; welfare and SCC use U_acc to 2200;
+time-series quantities are reported to 2200 (peak values found within 2020-2200).
 Inputs: DICE2023 Rproj/vis_corrected/{ch2_runs_summary.csv, ch2_permafrost_sweep.csv, Welfare sensitivity/by_variable}
-Outputs: ../../tables/*.tex (bundle-relative)
+Outputs: ~/Desktop/Dissertation/Chapter2_revision/tables/*.tex
 """
 import json, math, os
 import numpy as np
 import pandas as pd
 
-VC = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "R", "vis_corrected"))
-OUT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tables"))
+VC = os.path.expanduser("~/Desktop/DICE_eco_feedbacks/DICE2023 Rproj/vis_corrected")
+OUT = os.path.expanduser("~/Desktop/Dissertation/Chapter2_revision/tables")
 os.makedirs(OUT, exist_ok=True)
 HERE = os.path.dirname(os.path.abspath(__file__))
 S = pd.read_csv(os.path.join(VC, "ch2_runs_summary.csv"))
@@ -56,7 +56,7 @@ def write(name, body):
 
 
 yrs = TATM.Years.values
-H = yrs <= 2300
+H = yrs <= 2200
 
 # ---------- 1. summary table (standard damage & discounting) ----------
 rows = []
@@ -65,7 +65,7 @@ for c in CONF:
     r = BASE[c]
     T = TATM[f'Run_{r}'].values[H]; i = int(np.argmax(T)); yp = int(yrs[i])
     D = DFRAC[f'Run_{r}'].values[H][i] * 100
-    rec = dict(c=c, T=T[i], y=yp, D=D, stp=STP(yp), T2100=T[80], T2200=T[180], T2300=T[280],
+    rec = dict(c=c, T=T[i], y=yp, D=D, stp=STP(yp), T2100=T[80], T2150=T[130], T2200=T[180],
                co2=MAT[f'Run_{r}'].values[80] * PPM)
     if ref is None:
         ref = rec
@@ -75,14 +75,14 @@ for k, r in enumerate(rows):
     dT = '---' if k == 0 else fmt(r['T'] - ref['T'], 2, True)
     dD = '---' if k == 0 else fmt(r['D'] - ref['D'], 2, True)
     lines.append(f"{k + 1} -- {r['c']} & {r['T']:.2f} & {r['y']} & {dT} & {r['D']:.2f}\\% & {dD} & {r['stp']:.4f} & "
-                 f"{r['T2100']:.2f} / {r['T2200']:.2f} / {r['T2300']:.2f} & {r['co2']:.0f} \\\\")
+                 f"{r['T2100']:.2f} / {r['T2150']:.2f} / {r['T2200']:.2f} & {r['co2']:.0f} \\\\")
 write("tab_summary.tex", r"""\begin{table}[H]
 \centering
-\caption{Peak temperature (T\textsubscript{peak}, 2020--2300) and its year, change relative to DICE~2023, damage fraction of gross output at the peak ($D_\text{frac}$), its change relative to DICE~2023, social time preference factor at the peak, temperature in 2100, 2200 and 2300, and atmospheric CO\textsubscript{2} in 2100, for the four configurations under the DICE~2023 cost--benefit optimal controls, standard damage and standard discounting.}
+\caption{Peak temperature (T\textsubscript{peak}, 2020--2200) and its year, change relative to DICE~2023, damage fraction of gross output at the peak ($D_\text{frac}$), its change relative to DICE~2023, social time preference factor at the peak, temperature in 2100, 2150 and 2200, and atmospheric CO\textsubscript{2} in 2100, for the four configurations under the DICE~2023 cost--benefit optimal controls, standard damage and standard discounting.}
 \small
 \setlength{\tabcolsep}{3pt}
 \begin{tabular}{lcccccccc}
-\textbf{Configuration} & \textbf{T\textsubscript{peak}} & \textbf{Peak} & \textbf{$\Delta$T\textsubscript{peak}} & \textbf{$D_\text{frac}$} & \textbf{$\Delta D_\text{frac}$} & \textbf{STP} & \textbf{T\textsubscript{2100/2200/2300}} & \textbf{CO\textsubscript{2}, 2100} \\
+\textbf{Configuration} & \textbf{T\textsubscript{peak}} & \textbf{Peak} & \textbf{$\Delta$T\textsubscript{peak}} & \textbf{$D_\text{frac}$} & \textbf{$\Delta D_\text{frac}$} & \textbf{STP} & \textbf{T\textsubscript{2100/2150/2200}} & \textbf{CO\textsubscript{2}, 2100} \\
  & \textbf{(\textdegree C)} & \textbf{year} & \textbf{(\textdegree C)} & \textbf{at peak} & \textbf{(pp)} & \textbf{at peak} & \textbf{(\textdegree C)} & \textbf{(ppm)} \\
 \hline
 """ + "\n".join(lines) + r"""
@@ -107,7 +107,7 @@ for c in CONF:
     for disc in ('std', 'zero'):
         for dam in ('std', 'HS'):
             x = cell(c, dam, disc); base = cell('DICE 2023', 'std', disc)
-            parts.append('---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (x.Uacc_2300 / base.Uacc_2300 - 1), 2, True) + r'\%')
+            parts.append('---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (x.Uacc_end / base.Uacc_end - 1), 2, True) + r'\%')
     scc_std = cell(c, 'std', 'std').SCC2020; scc_hs = cell(c, 'HS', 'std').SCC2020
     pz = []
     for dam in ('std', 'HS'):
@@ -120,7 +120,7 @@ for c in CONF:
     lines.append(f"{c} & {parts[0]} & {parts[1]} & {parts[2]} & {parts[3]} & {pst[0]} & {pst[1]} & {pz[0]} & {pz[1]} \\\\")
 write("tab_welfare_scc.tex", r"""\begin{table}[H]
 \centering
-\caption{Welfare and social cost of carbon (SCC) by configuration. Welfare is the change in $U_\text{acc}$ (to 2300) relative to DICE~2023 with standard damage under the same discounting convention. The 2020 SCC is in 2019 US\$ per tCO\textsubscript{2} under standard discounting (percentage change relative to DICE~2023 with the same damage function in parentheses); under zero time preference only the percentage change is shown (dollar values in Table~\ref{tab:scc_full}). Std: standard damage; HS: Howard--Sterner damage.}
+\caption{Welfare and social cost of carbon (SCC) by configuration. Welfare is the change in $U_\text{acc}$ (to 2200) relative to DICE~2023 with standard damage under the same discounting convention. The 2020 SCC is in 2019 US\$ per tCO\textsubscript{2} under standard discounting (percentage change relative to DICE~2023 with the same damage function in parentheses); under zero time preference only the percentage change is shown (dollar values in Table~\ref{tab:scc_full}). Std: standard damage; HS: Howard--Sterner damage.}
 \label{tab:welfare_scc}
 \small
 \setlength{\tabcolsep}{3pt}
@@ -143,15 +143,15 @@ for c in CONF:
     for dam in ('std', 'HS'):
         a, z = cell(c, dam, 'std'), cell(c, dam, 'zero')
         ba, bz = cell('DICE 2023', 'std', 'std'), cell('DICE 2023', 'std', 'zero')
-        la = '---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (a.Uacc_2300 / ba.Uacc_2300 - 1), 2, True) + r'\%'
-        lz = '---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (z.Uacc_2300 / bz.Uacc_2300 - 1), 2, True) + r'\%'
+        la = '---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (a.Uacc_end / ba.Uacc_end - 1), 2, True) + r'\%'
+        lz = '---' if (c == 'DICE 2023' and dam == 'std') else fmt(100 * (z.Uacc_end / bz.Uacc_end - 1), 2, True) + r'\%'
         lines.append(f"{c if dam == 'std' else ''} & {'Standard' if dam == 'std' else 'Howard--Sterner'} & "
-                     f"{a.Uacc_2300:,.1f} & {la} & {a.SCC2020:,.1f} & {a.SCC2050:,.1f} & "
-                     f"{z.Uacc_2300:,.0f} & {lz} & {z.SCC2020:,.0f} & {z.SCC2050:,.0f} \\\\".replace(',', '{,}'))
+                     f"{a.Uacc_end:,.1f} & {la} & {a.SCC2020:,.1f} & {a.SCC2050:,.1f} & "
+                     f"{z.Uacc_end:,.0f} & {lz} & {z.SCC2020:,.0f} & {z.SCC2050:,.0f} \\\\".replace(',', '{,}'))
     lines.append(r"\addlinespace")
 write("tab_scc_full.tex", r"""\begin{table}[H]
 \centering
-\caption{Accumulated welfare ($U_\text{acc}$ to 2300), welfare change relative to DICE~2023 with standard damage under the same discounting convention, and social cost of carbon in 2020 and 2050 (2019 US\$ per tCO\textsubscript{2}) for all sixteen runs. Under zero time preference the discount factor rises over time and the SCC is dominated by damages in later centuries.}
+\caption{Accumulated welfare ($U_\text{acc}$ to 2200), welfare change relative to DICE~2023 with standard damage under the same discounting convention, and social cost of carbon in 2020 and 2050 (2019 US\$ per tCO\textsubscript{2}) for all sixteen runs. Under zero time preference the discount factor rises over time and the SCC is dominated by damages in later centuries.}
 \label{tab:scc_full}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
@@ -204,7 +204,8 @@ Effect & Std damage & HS damage & Std damage & HS damage \\
 """)
 
 # ---------- 5. initial conditions (supplement replacement) ----------
-L20 = json.load(open(os.path.join(HERE, "lenton_km120_state2020.json")))
+import ch2_models as _CM
+L20 = _CM.L20
 PF = json.load(open(os.path.join(HERE, "perma_state2020.json")))
 g = lambda k: L20[k] * 12e-15
 init = [
@@ -242,7 +243,7 @@ Ocean carbon, warm/cold/intermediate/deep (PgC) & 730 / 140 / 10{,}040 / 26{,}83
 Air--sea flux, warm surface in/out (PgC\,yr$^{-1}$) & 57.0 / 57.9 & 56.9 / 58.4 \\
 Air--sea flux, cold surface in/out (PgC\,yr$^{-1}$) & 19.1 / 18.2 & 19.0 / 17.5 \\
 \addlinespace
-\multicolumn{3}{@{}l}{\textit{Extended business as usual (Lenton 2000, Sect.~5.1)}} \\
+\multicolumn{3}{@{}l}{\textit{Extended business as usual (Lenton 2000, Sect.~5.1), control version (iii)}} \\
 CO\textsubscript{2} in 1990 (ppmv) & 353 & 352.7 \\
 Land / ocean sink in 1990 (PgC\,yr$^{-1}$) & 1.98 / 1.98 & 1.98 / 1.99 \\
 Peak land sink (PgC\,yr$^{-1}$, year) & ${\sim}2.5$ (2030) & 2.43 (2028) \\
@@ -252,11 +253,17 @@ Ocean sink in 2060; peak (PgC\,yr$^{-1}$, year) & 4.9; ${\sim}6.8$ (2130) & 4.89
 Peak CO\textsubscript{2} (ppmv, year) & 985 (2170) & 984 (2174) \\
 Peak warming (K, year) & 5.5 (2180) & 5.53 (2184) \\
 \addlinespace
-\multicolumn{3}{@{}l}{\textit{Carbon-cycle feedbacks, 1\%\,yr$^{-1}$ to 4$\times$CO\textsubscript{2} (CMIP6 mean $\pm$ s.d.)}} \\
-Land $\beta$ (PgC\,ppm$^{-1}$) & $1.22 \pm 0.40$ & 0.69 \\
+\multicolumn{3}{@{}l}{\textit{Extended business as usual, ocean-warming version (iv), $K_M = 145$ (used in this study)}} \\
+CO\textsubscript{2} in 1990 (ppmv) & 353 & 352.6 \\
+Ocean sink in 2060 (PgC\,yr$^{-1}$) & 4.1 & 4.16 \\
+Peak CO\textsubscript{2} (ppmv, year) & 1020 & 1018 (2178) \\
+Peak warming (K) & 5.7 & 5.72 \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textit{Carbon-cycle feedbacks, 1\%\,yr$^{-1}$ to 4$\times$CO\textsubscript{2}, version (iv) (CMIP6 mean $\pm$ s.d., Arora et al. 2020, Table A1)}} \\
+Land $\beta$ (PgC\,ppm$^{-1}$) & $0.97 \pm 0.40$ & 0.81 \\
 Ocean $\beta$ (PgC\,ppm$^{-1}$) & $0.79 \pm 0.07$ & 0.86 \\
-Land $\gamma$ (PgC\,K$^{-1}$) & $-58 \pm 38$ & $-32$ \\
-Ocean $\gamma$ (PgC\,K$^{-1}$) & $-17 \pm 5$ & 0 (fixed ocean surface temperature) \\
+Land $\gamma$ (PgC\,K$^{-1}$) & $-45 \pm 51$ & $-33$ \\
+Ocean $\gamma$ (PgC\,K$^{-1}$) & $-17 \pm 5$ & $-21$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -277,7 +284,7 @@ if os.path.exists(os.path.join(VC, "ch2_feedback_main_effects.csv")):   # factor
         lines.append(f"{n1} & {n2} & {ref} & {off} & {fmt(e.dT_peak_mean, 2, True)} ({fmt(e.dT_peak_min, 2, True)} to {fmt(e.dT_peak_max, 2, True)}) \\\\\n\\addlinespace")
     write("tab_feedbacks.tex", r"""\begin{table}[H]
     \centering
-    \caption{Feedbacks in the Lenton carbon cycle and permafrost module switched in the full factorial analysis, how each is disengaged, and its effect on peak warming (2020--2300): mean difference between runs with the feedback on and off across the 32 combinations of the other five (range in parentheses). Standard damage and discounting, DICE~2023 optimal controls.}
+    \caption{Feedbacks in the Lenton carbon cycle and permafrost module switched in the full factorial analysis, how each is disengaged, and its effect on peak warming (2020--2200): mean difference between runs with the feedback on and off across the 32 combinations of the other five (range in parentheses). Standard damage and discounting, DICE~2023 optimal controls.}
     \label{tab:feedbacks}
     \footnotesize
     \begin{tabular}{>{\raggedright\arraybackslash}p{2.8cm} >{\raggedright\arraybackslash}p{3.6cm} p{1.6cm} >{\raggedright\arraybackslash}p{3.2cm} >{\raggedright\arraybackslash}p{2.6cm}}

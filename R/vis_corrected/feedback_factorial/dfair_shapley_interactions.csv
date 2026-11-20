@@ -1,0 +1,16 @@
+metric,pair,i,j,interaction
+SCC2020,irC x irT,irC,irT,-1.2177327384558847
+SCC2020,irC x perma,irC,perma,1.6579467560856695
+SCC2020,irT x perma,irT,perma,0.9825357145498028
+SCC2100,irC x irT,irC,irT,-6.159272670535586
+SCC2100,irC x perma,irC,perma,10.8000663779859
+SCC2100,irT x perma,irT,perma,5.7532249775131845
+peak_T,irC x irT,irC,irT,-0.06293281234997794
+peak_T,irC x perma,irC,perma,0.05748416264075251
+peak_T,irT x perma,irT,perma,0.03462095549494215
+T2100,irC x irT,irC,irT,-0.06598485281175348
+T2100,irC x perma,irC,perma,0.0394785190566842
+T2100,irT x perma,irT,perma,0.025124615718961518
+T2200,irC x irT,irC,irT,-0.02301314705992752
+T2200,irC x perma,irC,perma,0.13208408949630734
+T2200,irT x perma,irT,perma,0.07798866901846724

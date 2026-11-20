@@ -1,4 +1,64 @@
-# Chapter 2 (DICE-C / DICE-CP): updated code, figures and notes (17 Nov 2026)
+# Chapter 2 (DICE-C / DICE-CP): updated code, figures and notes (17 Nov 2026; updated 20 Nov 2026)
+
+## 0. Update, 20 Nov 2026 (read first; supersedes sections 1-4 where they differ)
+
+### Model and set-up changes
+| Change | Detail |
+|---|---|
+| Lenton variant | **(iv)**, Lenton's ocean-warming version (surface boxes warm with global T, his Eq. 16) with his K_M = 145. Was (iii), his control (fixed ocean T, K_M = 120). `LENTON_VARIANT=iii` restores it. 2020 state: `lenton_km145_iv_state2020.json` (418.6 ppm). |
+| Horizon | **2020-2200** everywhere (simulations, welfare, SCC). After 2200 the DICE 2023 control path's sustained net removal (μ > 1 from ~2120) pushes every Lenton run below 280 ppm, and some feedback-switch combinations reach zero CO2 (`check_2300_physical.py`). |
+| Feedback switches | `cfg['fbx']` in `ch2_models.py`: ocean buffer, ocean warming, CO2 fertilisation, photosynthesis T response, plant and soil respiration T responses. "Off" = the process keeps its pre-industrial response from 1800 (own spin-up per combination). `cfg['KM']` overrides fertilisation strength. |
+| Other model options | prescribed emissions `E_fn` (GtC/yr or (fossil, land-use)), non-CO2 forcing `F_nonco2` (constant or function of year), reversible abrupt thaw, running-mean Q10 (sensitivity tests only). Defaults reproduce earlier runs exactly. |
+| Chapter 3 optimiser | `code/dice_pyomo_corrected.py` uses variant (iv): 2-D chemistry fit (DIC x ocean warming, error 1.6e-6) and temperature-dependent solubility. Forward model matches `ch2_models.py` (peak T within 7e-4 C). VM runs pending: `chapter3/VM_VARIANT_IV_RUNS.md`. |
+
+### Evaluation (variant iv)
+- Lenton's own experiment (iv): 1018 ppm / 5.72 K (his 1020 / 5.7). C4MIP (1%/yr to 4xCO2): land β 0.81, ocean β 0.86, land γ −33, ocean γ −21 PgC/K, all within CMIP6 ±1 s.d. (Arora et al. 2020, Table A1: 0.97±0.40, 0.79±0.07, −45±51, −17±5). DFAIR total β 1.84, γ −97 (CMIP6 total 1.75, −62).
+- Emissions-driven SSPs (`ssp_check_v2.py`, RCMIP v5.1.0): CO2 rise 2020-2100 in SSP2-4.5 is 184 (Lenton + permafrost), 193 (DFAIR + permafrost) vs 188 (MAGICC); permafrost releases 75-128 PgC by 2100 across SSPs.
+- Hector validation: frozen pool matches Hector's own update rule within ~1% (RCP2.6-8.5, 2000-2100). Zero-emissions commitment from permafrost: +0.10 C after 50 yr on both carbon cycles (MacDougall: 0.06, 0.02-0.14).
+- Figure: `R/vis_corrected/figures/fig_model_validation.png`.
+
+### Main results (GAMS controls, standard settings, 2020-2200)
+| | SCC 2020 | Peak T | T 2100 / 2200 |
+|---|---|---|---|
+| DICE 2023 | $45.0 | 2.63 | 2.59 / 1.81 |
+| DICE 2023 + permafrost | $48.9 | 2.81 | 2.73 / 2.21 |
+| DICE-C | $45.6 | 2.59 | 2.56 / 1.53 |
+| DICE-CP | $49.9 | 2.77 | 2.71 / 1.92 |
+
+- Permafrost (Hector strength): +0.15 C in 2100, +0.39 C in 2200; about half of the 2100 warming is from carbon thawed before 2020. SCC +9.4% (Lenton), +8.8% (DFAIR); gradual-only +8.3% (`ch2_gradual_only.csv`).
+- **SCC by carbon-cycle process (Shapley values, 128-run factorial, Lenton), 2020 pulse:** all feedbacks at pre-industrial $42.8; ocean buffer +13.8, ocean warming +2.2, CO2 fertilisation −14.2, photosynthesis T −12.0, plant respiration +6.2, soil respiration +7.8, permafrost +3.3; all on $49.9. 2080 pulse: $189 → $231, same pattern (`shapley_values_p2080.csv`).
+- Interactions: only the ocean-buffer pairs are sign-consistent across all 32 backgrounds (× fertilisation −7.9, × photosynthesis −6.9, × soil +4.5, × plant +3.6, × permafrost +1.5).
+- DFAIR (2 aggregate terms + permafrost): $24.3 → uptake saturation +13.3, temperature term +8.6, permafrost +2.7 → $48.9.
+- Across CMIP6 land β (K_M 100 / 145 / 275, each spun up; 2020 CO2 then differs from observed): fertilisation −10.5 / −14.2 / −21.7, permafrost 3.4 / 3.3 / 3.0, **net feedback +12.6 / +7.1 / −3.5** (sign depends on fertilisation strength).
+- DFAIR scaled to the CMIP6 β/γ ±1 s.d. corners: SCC $34-59, permafrost premium 7.7-9.2% (`dfair_cmip6_range.csv`).
+- Zero time preference at 2200: DICE 2023 SCC $472 (was $1,630 to 2300); permafrost premium +19-21%.
+
+### New scripts (code/permafrost_revision_test/) and outputs (R/vis_corrected/)
+| Script | Output |
+|---|---|
+| `ch2_final_runs_parallel.py`, `ch2_tables.py` | main grid, sweep, tables (now 2200) |
+| `ch2_warming_time.py` | `ch2_permafrost_warming_time(series).csv` |
+| `ch2_gradual_only.py` | `ch2_gradual_only.csv` |
+| `ch2_feedback_factorial.py` | `feedback_factorial/factorial_*`, `fert_sweep_*` (6-process factorial; fertilisation-strength sweep) |
+| `ch2_scc_shapley.py` (env `SHAPLEY_KM`, `SHAPLEY_TAG`, `SHAPLEY_PULSES`, `SHAPLEY_SKIP_DFAIR`) | `feedback_factorial/shapley_runs*.csv`, `shapley_values*.csv`, `dfair_cmip6_range.csv` |
+| `ch2_shapley_interactions.py` | `shapley_interactions.csv` (incl. equal-weight, all-on, range, sign consistency), `shapley_off_to_on.csv` |
+| `ch2_dfair_shapley.py` | `dfair_shapley_values.csv`, `dfair_shapley_interactions.csv` |
+| `ch2_dfair_feedbacks.py` | DFAIR irC/irT scaling, `c4mip_compare.csv`, `lenton_grouped_effects.csv` |
+| `ssp_check_v2.py` | `ssp_check_v2.csv` (RCMIP inputs in `hist_data/` are World-level SSP extracts) |
+| `overshoot_checks.py` (`ZEC_ONLY=1` for the zero-emissions test) | zero-emissions and overshoot checks (overshoot results not used in Paper 2) |
+| `export_permafrost_before_after.py` | `permafrost_before_after.csv` (original pools from a Python replication of the STELLA module, within 0.008 C of STELLA) |
+| `km_beta_map.py`, `lenton_iv_evaluation.py`, `check_2300_physical.py` | K_M → land β map; C4MIP β/γ for (iii)/(iv); 2300 feasibility check |
+| `run_all_2200.sh`, `run_paper2_extras.sh` | reruns everything in order |
+
+R figure scripts (`R/`): `Visualizations_before_after.R` (`figures/before_after/ba1-ba4`), `Visualizations_scc_waterfall.R` (args: values file, pulse years, output), `Visualizations_scc_interactions.R`, `Visualizations_scc_decomposition.R` (Lenton vs DFAIR), `Visualizations_permafrost_timing.R`, `Visualizations_validation.R`. Python scripts write to `~/Desktop/DICE_eco_feedbacks/DICE2023 Rproj/vis_corrected`; edit the `OUT` paths to write elsewhere.
+
+### Still to do
+- `tables/methods_revised.tex` still describes the 2300 horizon and does not yet describe the factorial / Shapley method.
+- Chapter 3 re-solve with variant (iv) on the VM; `chapter3/` results below are still variant (iii) to 2420.
+- `tables/reviewer_response_map.md` predates the variant (iv) switch and the Shapley analysis.
+
+---
+
 
 ## 1. What is in this folder
 

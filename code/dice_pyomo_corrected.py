@@ -5,18 +5,20 @@ DICE_CONFIG = 'dicec'  : DICE 2023 economy + Lenton (2000) carbon cycle
 DICE_CONFIG = 'dicecp' : + Hector v2.3pf-faithful permafrost with smooth Armstrong McKay abrupt thaw
 (DICE 2023 itself is unchanged; its existing solution stands.)
 
-Physics = permafrost_revision_test/ch2_models.py ('lenton' carbon cycle, K_M = 120, variant iii):
+Physics = permafrost_revision_test/ch2_models.py ('lenton' carbon cycle, Lenton variant iv: ocean surface warms with
+global temperature, K_M = 145; env LENTON_VARIANT=iii gives his control version, no ocean warming, K_M = 120):
   * land: Lenton eqs. 1-6 & 17; land-use CO2 removed from vegetation, C_v(s) = C_v0 - k_D * Dcum
   * ocean: Lenton Fig. 1 four-box circulation in GtC (fluxes = Q * C/V, no mol conversion), Knox & McElroy
     biology. With fixed circulation and biology, alkalinity and nitrate are exactly steady (verified over
     1850-2020), so only the 4 DIC pools are states and biological export is a constant source/sink per box.
-  * surface pCO2: exact carbonate chemistry tabulated as a function of each surface box's DIC (TA, T, S fixed)
-    and fitted with a polynomial in log space (fit error reported at start-up; DIC states bounded to the fit range)
+  * surface pCO2: exact carbonate chemistry tabulated as a function of each surface box's DIC and (variant iv) its
+    warming, TA and S fixed, fitted with a tensor Chebyshev polynomial in log space (fit error reported at start-up;
+    DIC states bounded to the fit range); variant iv also makes CO2 solubility K0 in the air-sea flux follow the warming
   * permafrost (dicecp): 0.02/yr respiration, 730 PgC in 2020, ln(wf*T) frozen fraction (tanh normal-CDF
     approximation, as in the previous Pyomo models), refreeze limiter, T200 = 200-yr running mean of wf*T
     (pre-2020 values from the same historical reconstruction as ch2_models.py). Hector's 'sticky' Q10 is
     omitted: tested in ch2_models.py, it changes nothing on these paths (U_acc identical to 1e-3).
-  * initial state: 2020 Lenton state from the 1800-2020 historical run (lenton_km120_state2020.json); permafrost
+  * initial state: 2020 Lenton state from the 1800-2020 historical run (lenton_km145_iv_state2020.json); permafrost
     pools from the 1800-2020 permafrost spin-up (perma_state2020.json)
 Numerics: annual decision variables MIU/S, annual RK4 defect constraints with SUBSTEPS per year (env), as before.
 
@@ -99,10 +101,13 @@ GT2MOL = 1e15 / 12.0
 V = dict(l=P['Vl'], h=P['Vh'], i=P['Vi'], d=P['Vd'])
 kT, kU, kwi, kid = P['kT'], P['kU'], P['kwi'], P['kid']
 AREA = dict(l=P['aO'] * P['Al'], h=P['aO'] * P['Ah'])
-KM = 120.0
+VARIANT = os.environ.get('LENTON_VARIANT', 'iv')
+assert VARIANT in ('iii', 'iv')
+OW = VARIANT == 'iv'                              # ocean surface warms with TATM (Lenton eq. 16)
+KM = 145.0 if OW else 120.0
 kMM = 1.478 * (251.0 / (120 + 251.0)) / (251.0 / (KM + 251.0))
 ka_fgtm = P['fgtm'] / P['ka']                     # atm per GtC
-L20 = json.load(open(os.path.join(PRT, "lenton_km120_state2020.json")))
+L20 = json.load(open(os.path.join(PRT, "lenton_km145_iv_state2020.json" if OW else "lenton_km120_state2020.json")))
 MASS = {b: V[b] * RHO for b in 'lhid'}
 
 
@@ -129,27 +134,61 @@ def _pco2_exact(dic, ta, T):
     return dic * H * H / (H * H + K1 * H + K1 * K2) / K0
 
 
-# polynomial fit of ln(pCO2_s) in x = DIC/DIC20 - 1 for each surface box (TA and T fixed)
+# polynomial fit of ln(pCO2_s) in x = DIC/DIC20 - 1 and (variant iv) ocean warming dT for each surface box (TA fixed):
+# tensor Chebyshev fit, converted to the power basis for evaluation
 XLO, XHI, DEG = -0.10, 0.06, 10
+TLO, THI, DEGT = (-0.5, 5.0, 4) if OW else (0.0, 0.0, 0)
+
+
+def _cheb_to_power(n):
+    M = np.zeros((n + 1, n + 1))
+    for k in range(n + 1):
+        e = np.zeros(n + 1); e[k] = 1.0
+        pk = np.polynomial.chebyshev.cheb2poly(e); M[k, :len(pk)] = pk
+    return M                                                  # row k = power coefficients of T_k
+
+
+def _scale(z, lo, hi):
+    return (2 * z - (lo + hi)) / (hi - lo) if hi > lo else 0.0 * z
+
+
 CHEM = {}
-for b, T in (('l', P['Tl']), ('h', P['Th'])):
+for b, T0 in (('l', P['Tl']), ('h', P['Th'])):
     D20 = L20[f'DIC_{b}']                                  # mol
     ta = L20[f'TA_{b}'] / MASS[b]
-    xs = np.linspace(XLO, XHI, 400)
-    ys = np.array([math.log(_pco2_exact(D20 * (1 + x) / MASS[b], ta, T)) for x in xs])
-    us = (2 * xs - (XLO + XHI)) / (XHI - XLO)               # scaled to [-1, 1]; Chebyshev fit, power-basis evaluation
-    coef = np.polynomial.chebyshev.cheb2poly(np.polynomial.chebyshev.chebfit(us, ys, DEG))
-    err = np.max(np.abs(np.exp(np.polynomial.polynomial.polyval(us, coef) - ys) - 1))
-    CHEM[b] = dict(D20_gtc=D20 * 12e-15, coef=[float(c) for c in coef], relerr=err,
-                   g=P['ks'] * AREA[b] * RHO * _chem_consts(T)[0] * 12e-15)   # GtC/yr per atm
+    xs = np.linspace(XLO, XHI, 160); ts = np.linspace(TLO, THI, 23) if OW else np.array([0.0])
+    X, Tg = np.meshgrid(xs, ts, indexing='ij')
+    ys = np.array([math.log(_pco2_exact(D20 * (1 + x) / MASS[b], ta, T0 + t)) for x, t in zip(X.ravel(), Tg.ravel())])
+    us, vs = _scale(X.ravel(), XLO, XHI), _scale(Tg.ravel(), TLO, THI)
+    Vm = np.polynomial.chebyshev.chebvander2d(us, vs, [DEG, DEGT])
+    cc = np.linalg.lstsq(Vm, ys, rcond=None)[0].reshape(DEG + 1, DEGT + 1)
+    coef = _cheb_to_power(DEG).T @ cc @ _cheb_to_power(DEGT)      # coef[i, j] multiplies u^i v^j
+    fit = np.polynomial.polynomial.polyval2d(us, vs, coef)
+    err = np.max(np.abs(np.exp(fit - ys) - 1))
+    CHEM[b] = dict(D20_gtc=D20 * 12e-15, coef=coef.tolist(), relerr=err, T0=T0,
+                   gfac=P['ks'] * AREA[b] * RHO * 12e-15)       # x K0(T) -> GtC/yr per atm
 
 
-def pco2_surface(b, dic_gtc):
+def K0_expr(T, S=34.7):
+    return pyo.exp(-60.2409 + 93.4517 * (100 / T) + 23.3585 * pyo.log(T / 100)
+                   + S * (0.023517 - 0.023656 * (T / 100) + 0.0047036 * (T / 100) ** 2))
+
+
+def g_airsea(b, dT):
+    c = CHEM[b]
+    return c['gfac'] * (K0_expr(c['T0'] + dT) if OW else _chem_consts(c['T0'])[0])
+
+
+def pco2_surface(b, dic_gtc, dT=0.0):
     c = CHEM[b]; x = dic_gtc / c['D20_gtc'] - 1.0
     u = (2 * x - (XLO + XHI)) / (XHI - XLO)
+    v = _scale(dT, TLO, THI) if OW else 0.0
     poly = 0.0
-    for k in reversed(range(len(c['coef']))):
-        poly = poly * u + c['coef'][k]
+    for j in reversed(range(DEGT + 1)):
+        pj = 0.0
+        for i in reversed(range(DEG + 1)):
+            pj = pj * u + c['coef'][i][j]
+        poly = poly * v + pj
     return pyo.exp(poly)
 
 
@@ -240,8 +279,9 @@ def rhs(st, miu, s, y, ex, T200, a2=A2):
         f = q * SY * C[src] / V[src]
         dO[src] = dO[src] - f; dO[dst] = dO[dst] + f
     pa = Ca * ka_fgtm
-    Fl = CHEM['l']['g'] * (pa - pco2_surface('l', C['l']))
-    Fh = CHEM['h']['g'] * (pa - pco2_surface('h', C['h']))
+    dTo = TATM if OW else 0.0
+    Fl = g_airsea('l', dTo) * (pa - pco2_surface('l', C['l'], dTo))
+    Fh = g_airsea('h', dTo) * (pa - pco2_surface('h', C['h'], dTo))
     dO['l'] = dO['l'] + Fl; dO['h'] = dO['h'] + Fh
     out = [dTb1, dTb2, I - dK_param * K, ECo2 / 3.666, U * ex['L'] * STP * scale1_,
            Fc1_ * ex['CO2EGHGabateB'] * (1 - miu) - (-math.log(Fc2_)) * st['FGHG']]
@@ -311,8 +351,9 @@ def forward(miu_f, s_f, nyears=N_TOTAL, sub=1, record=None):
     return np.array(traj)
 
 
-print(f"[{CONFIG}] chemistry fit max rel. error in pCO2: warm {CHEM['l']['relerr']:.2e}, cold {CHEM['h']['relerr']:.2e} "
-      f"(DIC fit range {XLO:+.0%}..{XHI:+.0%} of 2020)", flush=True)
+print(f"[{CONFIG}, Lenton variant {VARIANT}, K_M={KM:g}] chemistry fit max rel. error in pCO2: warm {CHEM['l']['relerr']:.2e}, "
+      f"cold {CHEM['h']['relerr']:.2e} (DIC fit range {XLO:+.0%}..{XHI:+.0%} of 2020"
+      + (f"; ocean warming {TLO:+.1f}..{THI:+.1f} C)" if OW else ")"), flush=True)
 
 if os.environ.get("DICE_CHECK_ONLY") == "1" and __name__ == "__main__":
     # forward checks: annual RK4 (sub = 1, 2, 5) vs fine reference (sub = 20), GAMS controls

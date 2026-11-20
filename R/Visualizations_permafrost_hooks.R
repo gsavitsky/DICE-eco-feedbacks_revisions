@@ -112,7 +112,7 @@ cat("Hook figures written to vis_corrected/figures\n")
 em_file <- "vis_corrected/ch2_emissions_std.csv"
 if (file.exists(em_file)) {
   em <- read_csv(em_file, show_col_types = FALSE) %>%
-    filter(Years <= 2300) %>%
+    filter(Years <= 2200) %>%
     pivot_longer(-Years, names_to = "Config", values_to = "E") %>%
     mutate(Config = factor(Config, levels = c("DICE 2023", "DFAIR + permafrost", "DICE-C", "DICE-CP")))
   p_em <- ggplot(em, aes(Years, E, color = Config, linetype = Config)) +

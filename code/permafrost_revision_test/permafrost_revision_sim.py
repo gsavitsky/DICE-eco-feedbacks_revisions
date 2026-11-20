@@ -33,7 +33,7 @@ sys.path.insert(0, PARENT)
 os.chdir(PARENT)  # dsv reads controls.json etc. relative to its own folder; keep cwd safe
 OUT = HERE
 STELLA_XLSX = os.path.expanduser(
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "FINALresults.xlsx"))   # old STELLA results; only used by stella_xlsx() for reproduction checks
+    "~/Desktop/DICE_eco_feedbacks/DICE2023 Rproj/STELLA results/FINALresults.xlsx")
 DT = float(os.environ.get("PF_DT", "0.01"))
 N = 400
 
